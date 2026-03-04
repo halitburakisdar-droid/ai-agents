@@ -133,6 +133,50 @@ def send_text(text: str):
         print(f"  ⚠️  Telegram metin hatası: {e}")
 
 
+# send_text alias — daha basit isim
+def send_message(text: str):
+    """send_text() için alias."""
+    send_text(text)
+
+
+def send_content_for_feedback(title: str, score: float, engagement: str,
+                               hook: str = "", best_time: str = "18:00",
+                               decision: str = "ONAY"):
+    """
+    Level 1 içerik bildirimi — içerik kalitesini özetler.
+    Butonlu değil, sade bilgi mesajı.
+    """
+    icon  = "🟢" if score >= 8 else "🟡" if score >= 6 else "🔴"
+    emoji = "✅" if decision == "ONAY" else "🔄" if decision == "REVİZE" else "❌"
+    text  = (
+        f"{emoji} *Yeni İçerik* — {datetime.now().strftime('%H:%M')}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📋 {title[:60]}\n"
+        f"{icon} Kalite: *{score}/10* | Engagement: {engagement}\n"
+        f"⏰ En iyi saat: `{best_time}`\n"
+    )
+    if hook:
+        text += f"🎣 Hook: _{hook[:80]}_\n"
+    text += f"Karar: *{decision}*"
+    send_text(text)
+
+
+def send_report(level: int, title: str, body: str, success: bool = True):
+    """
+    Level 2 / Level 3 sistem raporu gönder.
+    level: 1, 2 veya 3
+    """
+    icons = {1: "📊", 2: "🔧", 3: "🎯"}
+    status = "✅" if success else "⚠️"
+    text = (
+        f"{status} *Level {level} Raporu* — {datetime.now().strftime('%d/%m %H:%M')}\n"
+        f"{icons.get(level,'📌')} *{title}*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{body[:800]}"
+    )
+    send_text(text)
+
+
 # ── Buton Callback Handler ──────────────────────────
 
 async def _button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):

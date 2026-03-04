@@ -4,7 +4,7 @@ Level 2 Autonomous Loop — Günde 4x (06:00 / 12:00 / 18:00 / 00:00)
 =====================================================================
 - Level 1 raporlarını okur
 - Sorunları tespit eder
-- Qwen 2.5-32B ile kod yazar + test eder + commit eder
+- Qwen 3.5-9B ile kod yazar + test eder + commit eder
 - Kritik sorunları Level 3'e escalate eder
 """
 
@@ -16,7 +16,7 @@ from memory.learning_db import (
     get_level1_reports, init_learning_tables, get_open_escalations
 )
 from agents.learning.autonomous_code_writer import AutonomousCodeWriter
-from utils.telegram_bot import send_text
+from utils.telegram_bot import send_text, send_report
 
 MAX_FIXES_PER_CYCLE = 3   # Tek çevrimde maksimum otomatik düzeltme
 
@@ -106,7 +106,7 @@ def main():
 
     if not reports:
         print("  Rapor yok — sistem sağlıklı.")
-        send_text(f"🤖 *Level 2*: Rapor yok, sistem sağlıklı — {datetime.now().strftime('%H:%M')}")
+        send_report(2, "Sistem Sağlıklı", "Rapor yok — tüm agent'lar normal çalışıyor.")
         return
 
     # 2. Sorunları analiz et
@@ -115,7 +115,7 @@ def main():
 
     if not issues:
         print("  Sorun yok — performans yeterli.")
-        send_text(build_status_report(reports, []))
+        send_report(2, "Performans Yeterli", build_status_report(reports, []))
         return
 
     # 3. Sorunları çöz
@@ -137,7 +137,11 @@ def main():
             print(f"  ❌ Düzeltme başarısız: {result.get('reason','?')}")
 
     # 4. Rapor gönder
-    send_text(build_status_report(reports, results))
+    fixed     = sum(1 for r in results if r.get("success"))
+    escalated = sum(1 for r in results if r.get("escalated"))
+    ok = escalated == 0
+    send_report(2, f"Döngü Tamamlandı — {len(issues)} sorun",
+                build_status_report(reports, results), success=ok)
     print(f"\n  Level 2 tamamlandı.")
 
 

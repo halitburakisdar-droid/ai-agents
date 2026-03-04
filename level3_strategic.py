@@ -17,7 +17,7 @@ from memory.learning_db import (
     get as db_get, init_learning_tables, resolve_escalation
 )
 from agents.learning.performance_tracker import get_performance_stats, get_best_worst
-from utils.telegram_bot import send_text
+from utils.telegram_bot import send_text, send_report
 
 def build_opus_packet() -> dict:
     """Claude/Opus için stratejik özet JSON paketi oluştur."""
@@ -158,7 +158,8 @@ def main():
 
     # Telegram
     brief = format_telegram_brief(packet)
-    send_text(brief)
+    has_esc = len(packet["escalations"]) > 0
+    send_report(3, f"Günlük Brief — {packet['date']}", brief, success=not has_esc)
     print(f"  Telegram'a gönderildi.")
 
     # Özet ekrana
