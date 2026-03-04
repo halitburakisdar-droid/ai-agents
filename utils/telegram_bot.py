@@ -45,20 +45,115 @@ def send_text(text: str) -> bool:
 # ── Level Raporları ──────────────────────────────────
 
 def send_level1_report(content: dict) -> bool:
-    """Level 1 içerik bildirimi."""
-    issue_line = f"⚠️ Issue: {content['issue']}" if content.get("issue") else "✅ Healthy"
-    msg = (
-        f"🎨 *LEVEL 1 — YENİ İÇERİK*\n"
+    """
+    Level 1 tam içerik bildirimi.
+    Slaytlar uzunsa 2 mesaja böler.
+    Son mesaja inline butonlar ekler.
+    """
+    score      = content.get("score", 0)
+    viral      = content.get("viral", 0)
+    slides     = content.get("slides", {})  # {"SLIDE_01_BASLIK": ..., "SLIDE_01_METIN": ...}
+    caption    = content.get("caption", "")
+    hashtag_tr = content.get("hashtag_tr", "")
+    hashtag_en = content.get("hashtag_en", "")
+    market     = content.get("market", {})
+    best_time  = content.get("best_time", "18:00")
+    engagement = content.get("engagement", "orta")
+    issue_line = f"\n⚠️ *Issue:* {content['issue']}" if content.get("issue") else ""
+
+    score_icon = "🟢" if score >= 8 else "🟡" if score >= 6 else "🔴"
+
+    # ── MESAJ 1: Header + Slaytlar ─────────────────────
+    header = (
+        f"🎨 *YENİ CAROUSEL HAZIR*\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⏰ {datetime.now().strftime('%H:%M')}\n"
-        f"📝 {content.get('type', 'Carousel')}\n"
-        f"⭐ Kalite: *{content.get('score', 0)}/10*\n"
-        f"🔥 Viral: {content.get('viral', 0)}/10\n\n"
-        f"*BAŞLIK:*\n"
-        f"{str(content.get('title', ''))[:100]}\n\n"
-        f"{issue_line}"
+        f"⏰ {datetime.now().strftime('%H:%M')}  |  "
+        f"{score_icon} *{score}/10*  |  🔥 {viral}/10\n"
+        f"⏰ En iyi paylaşım: `{best_time}`  |  {engagement}\n"
+        f"{issue_line}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📱 *SLAYTLAR*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     )
-    return send_message(msg)
+
+    slide_lines = []
+    for i in range(1, 11):
+        key_b = f"SLIDE_{i:02d}_BASLIK"
+        key_m = f"SLIDE_{i:02d}_METIN"
+        baslik = slides.get(key_b, "")
+        metin  = slides.get(key_m, "")
+        if baslik:
+            slide_lines.append(f"*📍 SLAYT {i}:*\n{baslik}\n{metin}")
+
+    slides_text = "\n\n".join(slide_lines)
+    msg1 = header + slides_text
+
+    # 4096 karakter sınırı kontrolü
+    if len(msg1) > 4000:
+        msg1 = msg1[:3990] + "\n_...devam_"
+
+    # ── MESAJ 2: Caption + Piyasa + Butonlar ──────────
+    hashtags = ""
+    if hashtag_tr:
+        hashtags += hashtag_tr
+    if hashtag_en:
+        hashtags += "\n" + hashtag_en
+
+    market_lines = []
+    d = market.get("data", {})
+    for sembol, info in d.items():
+        if isinstance(info, dict):
+            icon  = info.get("icon", "📊")
+            fiyat = info.get("fiyat", 0)
+            degisim = info.get("degisim", 0)
+            if sembol in ("ALTIN", "BTC"):
+                market_lines.append(f"{icon} *{sembol}:* `{fiyat:,.0f}` ({degisim:+.1f}%)")
+            else:
+                market_lines.append(f"{icon} *{sembol}:* `{fiyat:.2f}` ({degisim:+.1f}%)")
+
+    msg2 = (
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"✍️ *CAPTION*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{caption[:600]}\n\n"
+        f"{hashtags[:300]}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 *PİYASA (Şu an)*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{chr(10).join(market_lines)}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+    # ── Gönder ─────────────────────────────────────────
+    ok1 = send_message(msg1)
+
+    # Mesaj 2 + inline butonlar
+    if not BOT_TOKEN or not CHAT_ID:
+        return ok1
+    try:
+        import json as _json
+        key = datetime.now().strftime("%H%M%S")
+        keyboard = {
+            "inline_keyboard": [[
+                {"text": "✅ YAYINLA",    "callback_data": f"pub_{key}"},
+                {"text": "🔄 REVİZE ET", "callback_data": f"rev_{key}"},
+                {"text": "❌ REDDET",    "callback_data": f"rej_{key}"},
+            ]]
+        }
+        r = requests.post(
+            f"{_API}/sendMessage",
+            json={
+                "chat_id":      CHAT_ID,
+                "text":         msg2,
+                "parse_mode":   "Markdown",
+                "reply_markup": _json.dumps(keyboard),
+            },
+            timeout=10,
+        )
+        return ok1 and r.ok
+    except Exception as e:
+        print(f"  ⚠️  Telegram msg2 hatası: {e}")
+        return ok1
 
 
 def send_level2_report(report: dict) -> bool:

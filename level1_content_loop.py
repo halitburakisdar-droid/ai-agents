@@ -171,14 +171,21 @@ def run_cycle():
     if issues:
         print(f"  ⚠️  {len(issues)} issue → Level 2 analiz edecek")
 
-    # ── 9. Telegram ───────────────────────────────────
+    # ── 9. Telegram — TAM İÇERİK ─────────────────────
     issue_str = issues[0]["description"][:80] if issues else None
     send_level1_report({
-        "type":  "Carousel",
-        "title": first_title_str[:100],
-        "score": round(quality_score, 1),
-        "viral": round(quality_score * 0.9, 1),
-        "issue": issue_str,
+        "type":       "Carousel",
+        "title":      first_title_str[:100],
+        "score":      round(quality_score, 1),
+        "viral":      round(quality_score * 0.9, 1),
+        "issue":      issue_str,
+        "slides":     slides,            # tüm slayt dict'i
+        "caption":    caption,           # tam caption metni
+        "hashtag_tr": hashtag_tr,        # Türkçe hashtagler
+        "hashtag_en": caption_data.get("hashtag_en", "") if "caption_data" in dir() and caption_data else "",
+        "market":     market,            # piyasa verileri
+        "best_time":  best_time,
+        "engagement": engagement,
     })
 
     return {
