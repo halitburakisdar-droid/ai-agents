@@ -81,7 +81,7 @@ def init_learning_tables():
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         week_number  INTEGER,
         topic        TEXT,
-        teacher      TEXT,   -- 'qwen2.5:32b' veya agent adı (peer learning)
+        teacher      TEXT,   -- 'qwen3.5:9b' veya agent adı (peer learning)
         curriculum   TEXT,   -- tam ders içeriği
         agents_trained TEXT, -- JSON listesi
         conducted_at TEXT

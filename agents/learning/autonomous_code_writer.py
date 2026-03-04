@@ -24,7 +24,7 @@ VENV_PYTHON = str(REPO / "venv" / "bin" / "python")
 
 
 class AutonomousCodeWriter:
-    MODEL = "qwen2.5:32b"
+    MODEL = "qwen3.5:9b"
     NAME  = "Autonomous Code Writer"
 
     def _ask(self, prompt: str, tokens: int = 1200) -> str:
