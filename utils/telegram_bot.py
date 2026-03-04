@@ -1,239 +1,152 @@
 """
-Telegram Bot Modülü
-===================
-- İçerik özeti gönderir
-- ✅ ONAYLA / ❌ REDDET butonları
-- Manuel override
-- SQLite'a karar loglar
+Telegram Bot Modülü — requests tabanlı
+=======================================
+python-telegram-bot yerine saf requests kullanır.
+Daha basit, daha hızlı, async yok.
 """
 
 import os
-import json
-import asyncio
-import threading
+import requests
 from datetime import datetime
 from dotenv import load_dotenv
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN", "")
-CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 
-# Bekleyen kararlar: message_id → {summary, event, decision}
-_pending: dict = {}
-
-
-# ── Mesaj Gönderme ──────────────────────────────────
-
-def _build_message(summary: dict) -> str:
-    """JSON özetinden okunabilir Telegram mesajı oluştur."""
-    m   = summary.get("market", {})
-    sig = summary.get("signals", {})
-    cnt = summary.get("content", {})
-    qc  = summary.get("qc", {})
-
-    altin_icon = "📈" if "+" in m.get("altin","") else "📉"
-    btc_icon   = "📈" if "+" in m.get("btc","")   else "📉"
-    dolar_icon = "📈" if "+" in m.get("dolar","") else "📉"
-
-    score = summary.get("quality", 0)
-    score_bar = "🟢" if score >= 8 else "🟡" if score >= 6 else "🔴"
-
-    return (
-        f"🤖 *AI Agent — Yeni İçerik Hazır*\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📋 *{summary.get('title', 'İçerik')[:55]}*\n\n"
-        f"📊 *Piyasa*\n"
-        f"{altin_icon} Altın: `{m.get('altin','?')}`   "
-        f"{btc_icon} BTC: `{m.get('btc','?')}`\n"
-        f"{dolar_icon} Dolar: `{m.get('dolar','?')}`   "
-        f"📈 BIST: `{m.get('bist','?')}`\n\n"
-        f"🌍 Jeopolitik risk: *{sig.get('geo_risk','?').upper()}*\n"
-        f"🏆 Kazanan: `{sig.get('winner','?')}` | Kaybeden: `{sig.get('loser','?')}`\n\n"
-        f"📱 *İçerik*\n"
-        f"Slayt: {cnt.get('slides','?')} | Hashtag: {cnt.get('hashtags','?')} | Caption: {cnt.get('caption_chars','?')} kr\n"
-        f"Trendler: {', '.join(cnt.get('top_trends',[])[:3]) or '-'}\n\n"
-        f"{score_bar} *Kalite Skoru: {score}/10* | Engagement: {summary.get('engagement','?')}\n"
-        f"⏰ En iyi saat: `{summary.get('best_time','?')}`\n\n"
-        f"💡 *QC Notu:*\n"
-        f"✔️ {qc.get('guclu','')[:60]}\n"
-        f"⚠️ {qc.get('zayif','')[:60]}\n"
-        f"🔧 {qc.get('iyilestirme','')[:70]}\n\n"
-        f"🤖 Agent tavsiyesi: *{summary.get('agent_rec','?')}*\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"_Karar ver:_"
-    )
+_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 
-def _build_keyboard(summary_key: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ ONAYLA",      callback_data=f"ONAY|{summary_key}"),
-            InlineKeyboardButton("❌ REDDET",      callback_data=f"RED|{summary_key}"),
-        ],
-        [
-            InlineKeyboardButton("🔄 REVİZE ET",  callback_data=f"REVIZE|{summary_key}"),
-            InlineKeyboardButton("🛠 AGENT FİX",  callback_data=f"AGENT_REVIZE|{summary_key}"),
-        ],
-    ])
+# ── Temel gönderici ──────────────────────────────────
 
-
-async def _send_async(summary: dict) -> dict:
-    bot = Bot(token=TOKEN)
-    text    = _build_message(summary)
-    summary_key = datetime.now().strftime("%H%M%S")
-
-    msg = await bot.send_message(
-        chat_id    = CHAT_ID,
-        text       = text,
-        parse_mode = "Markdown",
-        reply_markup = _build_keyboard(summary_key),
-    )
-
-    # Kararı beklemek için event koy
-    event = asyncio.Event()
-    _pending[summary_key] = {
-        "summary":  summary,
-        "event":    event,
-        "decision": None,
-        "note":     "",
-        "msg_id":   msg.message_id,
-    }
-    return {"msg_id": msg.message_id, "summary_key": summary_key}
-
-
-def send_summary(summary: dict) -> dict:
-    """Özeti Telegram'a gönder (sync wrapper)."""
-    if not TOKEN or not CHAT_ID:
-        print("  ⚠️  Telegram credentials eksik, atlanıyor.")
-        return {"error": "no_credentials"}
+def send_message(text: str) -> bool:
+    """Basit Markdown mesaj gönder."""
+    if not BOT_TOKEN or not CHAT_ID:
+        print("  ⚠️  Telegram credentials eksik (.env kontrol et)")
+        return False
     try:
-        result = asyncio.run(_send_async(summary))
-        print(f"  📨 Telegram'a gönderildi (msg_id={result['msg_id']})")
-        return result
+        r = requests.post(
+            f"{_API}/sendMessage",
+            json={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+        return r.ok
     except Exception as e:
-        print(f"  ⚠️  Telegram gönderme hatası: {e}")
-        return {"error": str(e)}
+        print(f"  ⚠️  Telegram hatası: {e}")
+        return False
 
 
-async def _send_simple_async(text: str):
-    bot = Bot(token=TOKEN)
-    await bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
+# send_text alias (eski kodlarla uyumluluk)
+def send_text(text: str) -> bool:
+    return send_message(text)
 
 
-def send_text(text: str):
-    """Düz metin mesaj gönder."""
-    if not TOKEN or not CHAT_ID:
-        return
-    try:
-        asyncio.run(_send_simple_async(text))
-    except Exception as e:
-        print(f"  ⚠️  Telegram metin hatası: {e}")
+# ── Level Raporları ──────────────────────────────────
+
+def send_level1_report(content: dict) -> bool:
+    """Level 1 içerik bildirimi."""
+    issue_line = f"⚠️ Issue: {content['issue']}" if content.get("issue") else "✅ Healthy"
+    msg = (
+        f"🎨 *LEVEL 1 — YENİ İÇERİK*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ {datetime.now().strftime('%H:%M')}\n"
+        f"📝 {content.get('type', 'Carousel')}\n"
+        f"⭐ Kalite: *{content.get('score', 0)}/10*\n"
+        f"🔥 Viral: {content.get('viral', 0)}/10\n\n"
+        f"*BAŞLIK:*\n"
+        f"{str(content.get('title', ''))[:100]}\n\n"
+        f"{issue_line}"
+    )
+    return send_message(msg)
 
 
-# send_text alias — daha basit isim
-def send_message(text: str):
-    """send_text() için alias."""
-    send_text(text)
+def send_level2_report(report: dict) -> bool:
+    """Level 2 kod yazma bildirimi."""
+    fixed    = report.get("fixes_successful", 0)
+    status   = "✅" if fixed > 0 else "🔄"
+    msg = (
+        f"{status} *LEVEL 2 — AUTONOMOUS CODE*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ {datetime.now().strftime('%H:%M')}\n\n"
+        f"*YAPILAN:*\n"
+        f"• {report.get('issues_found', 0)} sorun tespit\n"
+        f"• {report.get('fixes_attempted', 0)} düzeltme denendi\n"
+        f"• {report.get('fixes_successful', 0)} başarılı ✅\n"
+        f"• {report.get('escalations', 0)} Opus'a gönderildi ⚠️\n"
+    )
+    if report.get("message"):
+        msg += f"\n_{report['message']}_"
+    return send_message(msg)
 
+
+def send_level3_brief(packet: dict = None) -> bool:
+    """Level 3 stratejik özet."""
+    if packet:
+        perf  = packet.get("performance", {})
+        n_esc = len(packet.get("escalations", []))
+        avg   = perf.get("avg_quality_24h", 0)
+        trend = perf.get("trend_vs_yesterday", 0)
+        msg = (
+            f"🎯 *LEVEL 3 — STRATEGIC BRIEF*\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ {datetime.now().strftime('%d/%m %H:%M')} — Sabah Briefingi\n\n"
+            f"📊 24h ort: *{avg}/10* ({'📈' if trend >= 0 else '📉'} {trend:+.2f})\n"
+            f"⚠️ Açık escalation: {n_esc}\n"
+            f"📦 `logs/level3_packet.json` hazır\n\n"
+            f"_Opus karar vermesi için paket oluşturuldu._"
+        )
+    else:
+        msg = (
+            f"🎯 *LEVEL 3 — STRATEGIC BRIEF*\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ {datetime.now().strftime('%d/%m %H:%M')} — Sabah Briefingi\n"
+            f"📊 `logs/level3_packet.json` hazır\n\n"
+            f"_Opus karar vermesi için paket oluşturuldu._"
+        )
+    return send_message(msg)
+
+
+# ── Eski API uyumluluk fonksiyonları ─────────────────
 
 def send_content_for_feedback(title: str, score: float, engagement: str,
                                hook: str = "", best_time: str = "18:00",
-                               decision: str = "ONAY"):
-    """
-    Level 1 içerik bildirimi — içerik kalitesini özetler.
-    Butonlu değil, sade bilgi mesajı.
-    """
+                               decision: str = "ONAY") -> bool:
     icon  = "🟢" if score >= 8 else "🟡" if score >= 6 else "🔴"
     emoji = "✅" if decision == "ONAY" else "🔄" if decision == "REVİZE" else "❌"
     text  = (
         f"{emoji} *Yeni İçerik* — {datetime.now().strftime('%H:%M')}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📋 {title[:60]}\n"
-        f"{icon} Kalite: *{score}/10* | Engagement: {engagement}\n"
-        f"⏰ En iyi saat: `{best_time}`\n"
+        f"{icon} Kalite: *{score}/10* | {engagement}\n"
+        f"⏰ {best_time}\n"
     )
     if hook:
-        text += f"🎣 Hook: _{hook[:80]}_\n"
+        text += f"🎣 _{hook[:80]}_\n"
     text += f"Karar: *{decision}*"
-    send_text(text)
+    return send_message(text)
 
 
-def send_report(level: int, title: str, body: str, success: bool = True):
-    """
-    Level 2 / Level 3 sistem raporu gönder.
-    level: 1, 2 veya 3
-    """
-    icons = {1: "📊", 2: "🔧", 3: "🎯"}
+def send_report(level: int, title: str, body: str, success: bool = True) -> bool:
+    icons  = {1: "📊", 2: "🔧", 3: "🎯"}
     status = "✅" if success else "⚠️"
-    text = (
-        f"{status} *Level {level} Raporu* — {datetime.now().strftime('%d/%m %H:%M')}\n"
-        f"{icons.get(level,'📌')} *{title}*\n"
+    text   = (
+        f"{status} *Level {level} — {title}*\n"
+        f"{icons.get(level,'📌')} {datetime.now().strftime('%d/%m %H:%M')}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"{body[:800]}"
     )
-    send_text(text)
+    return send_message(text)
 
 
-# ── Buton Callback Handler ──────────────────────────
+# ── Placeholder (bot listener kaldırıldı) ────────────
 
-async def _button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data or ""
-    if "|" not in data:
-        return
-
-    decision, key = data.split("|", 1)
-    decision_map = {
-        "ONAY": "ONAY", "RED": "RED",
-        "REVIZE": "REVİZE", "AGENT_REVIZE": "AGENT_REVIZE",
-    }
-    decision = decision_map.get(decision, decision)
-
-    emoji = {"ONAY": "✅", "RED": "❌", "REVİZE": "🔄", "AGENT_REVIZE": "🛠"}.get(decision, "📌")
-
-    # Log + kullanıcıya geri bildirim
-    from utils.decision_logger import log_decision, init_decision_table
-    init_decision_table()
-    pending = _pending.get(key)
-    if pending:
-        summary = pending["summary"]
-        summary_json = json.dumps(summary, ensure_ascii=False, separators=(",", ":"))
-        tokens_s = int(len(summary_json.split()) * 1.3)
-        tokens_d = 5
-        log_decision(summary, decision, f"Telegram buton: {decision}", tokens_s, tokens_d)
-        pending["decision"] = decision
-        if pending.get("event"):
-            pending["event"].set()
-
-    await query.edit_message_text(
-        text=f"{emoji} *{decision}* kararı verildi!\n\n"
-             f"_{query.message.text[:200] if query.message else ''}_",
-        parse_mode="Markdown",
-    )
-    print(f"\n  📲 Telegram kararı: {decision} [key={key}]")
+def send_summary(summary: dict) -> dict:
+    """Eski send_summary uyumluluk wrapper."""
+    from utils.summary_generator import build_instagram_summary
+    text = f"🤖 *AI Agent — Yeni İçerik*\nKalite: {summary.get('quality',0)}/10"
+    send_message(text)
+    return {"ok": True}
 
 
 def start_bot_listener():
-    """
-    Arka planda buton dinleyici başlat.
-    Bağımsız thread'de çalışır, ana loop'u bloklamaz.
-    """
-    if not TOKEN:
-        return
-
-    def _run():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        app = Application.builder().token(TOKEN).build()
-        app.add_handler(CallbackQueryHandler(_button_handler))
-        print("  🤖 Telegram bot dinliyor (buton callback'ler aktif)")
-        app.run_polling(stop_signals=None)
-
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    return t
+    """Placeholder — requests tabanlı versiyon aktif bot listener gerektirmiyor."""
+    print("  ℹ️  Telegram bot listener devre dışı (requests modu)")

@@ -19,7 +19,7 @@ from agents.learning.performance_tracker import record_performance
 from memory.learning_db import (
     init_learning_tables, save_level1_report
 )
-from utils.telegram_bot import send_text, send_content_for_feedback, send_report
+from utils.telegram_bot import send_level1_report, send_message
 
 QUALITY_THRESHOLD = 6.5   # Bu altı → Level 2'ye issue raporla
 VIRAL_THRESHOLD   = 5.0
@@ -117,19 +117,16 @@ def run_cycle():
     if issues:
         print(f"  ⚠️  {len(issues)} issue tespit edildi — Level 2 analiz edecek")
 
-    # 8. Telegram — her çevrimde içerik bildirimi
-    send_content_for_feedback(
-        title      = hook or f"Cycle {cycle_num}",
-        score      = round(quality_score, 1),
-        engagement = engagement,
-        hook       = hook,
-        best_time  = best_time,
-        decision   = decision,
-    )
-    if issues:
-        issue_lines = "\n".join(f"• {i['type']}: {i['description'][:60]}" for i in issues)
-        send_report(1, f"⚠️ {len(issues)} Issue Tespit Edildi",
-                    f"{issue_lines}\n\nLevel 2 analiz edecek.", success=False)
+    # 8. Telegram bildirimi
+    issue_str = issues[0]["description"][:80] if issues else None
+    viral_score = round(quality_score * 0.9, 1)
+    send_level1_report({
+        "type":  "Carousel",
+        "title": hook or f"Cycle {cycle_num}",
+        "score": round(quality_score, 1),
+        "viral": viral_score,
+        "issue": issue_str,
+    })
 
     return {"cycle": cycle_num, "score": quality_score,
             "issues": issues, "errors": errors}

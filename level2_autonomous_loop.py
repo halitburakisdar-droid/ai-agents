@@ -16,7 +16,7 @@ from memory.learning_db import (
     get_level1_reports, init_learning_tables, get_open_escalations
 )
 from agents.learning.autonomous_code_writer import AutonomousCodeWriter
-from utils.telegram_bot import send_text, send_report
+from utils.telegram_bot import send_level2_report, send_message
 
 MAX_FIXES_PER_CYCLE = 3   # Tek çevrimde maksimum otomatik düzeltme
 
@@ -106,7 +106,9 @@ def main():
 
     if not reports:
         print("  Rapor yok — sistem sağlıklı.")
-        send_report(2, "Sistem Sağlıklı", "Rapor yok — tüm agent'lar normal çalışıyor.")
+        send_level2_report({"issues_found": 0, "fixes_attempted": 0,
+                            "fixes_successful": 0, "escalations": 0,
+                            "message": "Rapor yok — tüm agent'lar normal çalışıyor."})
         return
 
     # 2. Sorunları analiz et
@@ -115,7 +117,9 @@ def main():
 
     if not issues:
         print("  Sorun yok — performans yeterli.")
-        send_report(2, "Performans Yeterli", build_status_report(reports, []))
+        send_level2_report({"issues_found": 0, "fixes_attempted": 0,
+                            "fixes_successful": 0, "escalations": 0,
+                            "message": "Performans yeterli, düzeltme gerekmedi."})
         return
 
     # 3. Sorunları çöz
@@ -139,9 +143,12 @@ def main():
     # 4. Rapor gönder
     fixed     = sum(1 for r in results if r.get("success"))
     escalated = sum(1 for r in results if r.get("escalated"))
-    ok = escalated == 0
-    send_report(2, f"Döngü Tamamlandı — {len(issues)} sorun",
-                build_status_report(reports, results), success=ok)
+    send_level2_report({
+        "issues_found":     len(issues),
+        "fixes_attempted":  len(results),
+        "fixes_successful": fixed,
+        "escalations":      escalated,
+    })
     print(f"\n  Level 2 tamamlandı.")
 
 
